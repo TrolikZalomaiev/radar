@@ -1,42 +1,35 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <title>Radar Deep Scanner</title>
+    <title>Magene Radar Polling</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; background: #000; color: #fff; }
-        .container { max-width: 450px; margin: 0 auto; }
-        button { 
-            width: 100%; padding: 20px; font-size: 18px; font-weight: bold;
-            cursor: pointer; background: #007bff; color: white; border: none; 
-            border-radius: 15px; margin-bottom: 15px;
-        }
-        #statusBox {
-            margin: 20px 0; padding: 40px 20px; border-radius: 25px;
-            background: #111; font-size: 24px; font-weight: 800; border: 3px solid #333;
-        }
-        .warning { background: #e74c3c !important; color: #fff; }
-        #log { font-family: monospace; font-size: 10px; color: #0f0; text-align: left; height: 200px; overflow-y: auto; background: #050505; padding: 10px; }
+        button { width: 100%; padding: 25px; font-size: 20px; margin-bottom: 15px; cursor: pointer; border-radius: 15px; border: none; font-weight: bold; }
+        #unlock { background: #444; color: #fff; }
+        #connect { background: #007bff; color: #fff; }
+        #status { margin: 20px 0; padding: 40px; border-radius: 25px; font-size: 30px; font-weight: 900; background: #111; border: 3px solid #333; }
+        .warning { background: #e74c3c !important; border-color: #fff !important; }
+        #log { font-family: monospace; font-size: 11px; color: #0f0; text-align: left; height: 150px; overflow-y: auto; background: #050505; padding: 10px; }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <h1>RADAR SCANNER</h1>
-    <button id="unlock">1. ПОДГОТОВИТЬ ЗВУК</button>
-    <button id="connect">2. ПОДКЛЮЧИТЬ</button>
-    <div id="statusBox">ОЖИДАНИЕ</div>
-    <div id="log">Логи данных:<br></div>
-</div>
+    <h1>RADAR POLLING MODE</h1>
+    <button id="unlock">1. ВКЛЮЧИТЬ ЗВУК</button>
+    <button id="connect">2. ЗАПУСТИТЬ МОНИТОРИНГ</button>
+    <div id="status">READY</div>
+    <div id="log">Ожидание...<br></div>
 
 <script>
     const connectBtn = document.getElementById('connect');
     const unlockBtn = document.getElementById('unlock');
-    const statusBox = document.getElementById('statusBox');
+    const statusBox = document.getElementById('status');
     const logDiv = document.getElementById('log');
 
     let audioCtx = null;
+    const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
+    const CHAR_UUID = '8ce5cc02-0a4d-11e9-ab14-d663bd873d93'; // Та самая характеристика
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
@@ -45,71 +38,78 @@
 
     function playAlert() {
         if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth';
-        osc.frequency.value = 1500;
+        osc.type = 'square';
+        osc.frequency.value = 1200;
         gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.4);
         if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
-        log("Аудио-движок запущен");
+        unlockBtn.style.background = "#28a745";
+        log("Звук готов");
     };
+
+    async function startPolling(characteristic) {
+        log("Цикл опроса запущен...");
+        while (true) {
+            try {
+                const value = await characteristic.readValue();
+                let hex = "";
+                let hasCar = false;
+
+                for (let i = 0; i < value.byteLength; i++) {
+                    let v = value.getUint8(i);
+                    hex += v.toString(16).padStart(2, '0') + " ";
+                    // Если во 2-м или 3-м байте что-то есть
+                    if (i > 0 && v > 0) hasCar = true;
+                }
+
+                if (hasCar) {
+                    if (statusBox.innerText !== "МАШИНА! 🚗") {
+                        statusBox.innerText = "МАШИНА! 🚗";
+                        statusBox.className = "warning";
+                        playAlert();
+                    }
+                } else {
+                    statusBox.innerText = "ЧИСТО ✅";
+                    statusBox.className = "clear";
+                }
+                
+                // Скорость опроса (каждые 200 миллисекунд)
+                await new Promise(r => setTimeout(r, 200));
+            } catch (e) {
+                log("Ошибка опроса: " + e.message);
+                break;
+            }
+        }
+    }
 
     connectBtn.onclick = async () => {
         try {
+            log("Поиск...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: ['00001812-0000-1000-8000-00805f9b34fb']
+                optionalServices: [SERVICE_UUID]
             });
 
             const server = await device.gatt.connect();
-            log("Подключен к: " + device.name);
+            log("Подключено!");
             playAlert();
 
-            const services = await server.getPrimaryServices();
-            for (let service of services) {
-                const chars = await service.getCharacteristics();
-                for (let char of chars) {
-                    if (char.properties.notify) {
-                        await char.startNotifications();
-                        char.addEventListener('characteristicvaluechanged', (e) => {
-                            const data = e.target.value;
-                            
-                            // СКАНЕР: Перебираем все байты в пакете
-                            let hexString = "";
-                            let hasTarget = false;
-                            
-                            for (let i = 0; i < data.byteLength; i++) {
-                                let val = data.getUint8(i);
-                                hexString += val.toString(16).padStart(2, '0') + " ";
-                                
-                                // Если в любом байте, кроме первого технического, есть сигнал
-                                if (i > 0 && val > 0) hasTarget = true;
-                            }
-                            
-                            log("Data: " + hexString); // Видим всё, что шлет радар
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            const characteristic = await service.getCharacteristic(CHAR_UUID);
+            
+            statusBox.innerText = "МОНИТОРИНГ...";
+            startPolling(characteristic);
 
-                            if (hasTarget) {
-                                statusBox.innerText = "МАШИНА! 🚗";
-                                statusBox.className = "warning";
-                                playAlert();
-                            } else {
-                                statusBox.innerText = "ЧИСТО ✅";
-                                statusBox.className = "clear";
-                            }
-                        });
-                        log("Слушаю всё от: " + char.uuid.substring(0,4));
-                    }
-                }
-            }
-        } catch (e) { log("Ошибка: " + e.message); }
+        } catch (e) { log("ОШИБКА: " + e.message); }
     };
 </script>
 </body>
