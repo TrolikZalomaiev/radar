@@ -1,41 +1,32 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <title>Radar Final Fix</title>
+    <title>Radar Debugger v2</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
-        .container { max-width: 500px; margin: 0 auto; }
         #display {
-            width: 100%; height: 180px; margin: 15px 0; border-radius: 20px;
+            width: 100%; height: 200px; margin: 15px 0; border-radius: 20px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: #1a1a1a; border: 4px solid #333; transition: 0.3s;
+            background: #1a1a1a; border: 4px solid #333; transition: 0.1s;
         }
-        #statusText { font-size: 38px; font-weight: 900; }
-        .state-ready { color: #555; }
+        #statusText { font-size: 35px; font-weight: 900; }
         .state-clear { background: #062d19 !important; border-color: #2ecc71 !important; color: #2ecc71; }
-        .state-warning { background: #4d0000 !important; border-color: #ff4d4d !important; color: #ff4d4d; animation: blink 0.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-        button { width: 100%; padding: 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; margin-bottom: 10px; text-transform: uppercase; }
-        #unlock { background: #444; color: white; }
-        #connect { background: #007bff; color: white; }
-        #log { text-align: left; height: 140px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; border: 1px solid #222; color: #0f0; border-radius: 10px; }
+        .state-warning { background: #4d0000 !important; border-color: #ff4d4d !important; color: #ff4d4d; animation: blink 0.3s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        button { width: 100%; padding: 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; margin-bottom: 10px; }
+        #log { text-align: left; height: 180px; overflow-y: auto; background: #050505; padding: 10px; font-size: 10px; border: 1px solid #222; color: #0f0; border-radius: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <div id="display" class="state-ready">
-        <div id="statusText">READY</div>
-        <div id="subStatus" style="font-size:12px; margin-top:10px; opacity:0.6;">Подключись к радару</div>
+    <div id="display">
+        <div id="statusText">ОЖИДАНИЕ</div>
+        <div id="subStatus" style="font-size:11px; margin-top:10px; font-family: monospace;">Данные появятся тут</div>
     </div>
-
-    <button id="unlock">1. РАЗРЕШИТЬ ЗВУК ✅</button>
-    <button id="connect">2. ПОДКЛЮЧИТЬ РАДАР 📡</button>
-
-    <div id="log">--- LOG START ---<br></div>
-</div>
+    <button id="unlock" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
+    <button id="connect" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬ</button>
+    <div id="log">--- LOG ---<br></div>
 
 <script>
     const connectBtn = document.getElementById('connect');
@@ -46,96 +37,67 @@
     const logDiv = document.getElementById('log');
 
     let audioCtx = null;
-    const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
+    let lastData = ""; // Сюда сохраняем "тишину" для сравнения
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}<br>`;
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    function playAlert(isCar) {
+    function playAlert() {
         if (!audioCtx) return;
         if (audioCtx.state === 'suspended') audioCtx.resume();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = isCar ? 'sawtooth' : 'sine';
-        osc.frequency.value = isCar ? 1200 : 800;
-        gain.gain.setValueAtTime(isCar ? 0.8 : 0.01, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-        if (isCar && navigator.vibrate) navigator.vibrate([300, 100, 300]);
+        osc.type = 'sawtooth'; osc.frequency.value = 1500;
+        gain.gain.setValueAtTime(1, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        if (navigator.vibrate) navigator.vibrate([400, 100, 400]);
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        unlockBtn.style.background = "#2ecc71";
-        log("Звуковая система готова");
-        playAlert(false); // Тестовый тихий писк
+        unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
+        statusText.innerText = "READY";
     };
 
     connectBtn.onclick = async () => {
         try {
-            log("Запрос Bluetooth...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: [SERVICE_UUID]
+                optionalServices: ['8ce5cc01-0a4d-11e9-ab14-d663bd873d93']
             });
-
             const server = await device.gatt.connect();
-            log("Соединение: OK");
-
-            const service = await server.getPrimaryService(SERVICE_UUID);
+            const service = await server.getPrimaryService('8ce5cc01-0a4d-11e9-ab14-d663bd873d93');
             const chars = await service.getCharacteristics();
-            log("Каналов найдено: " + chars.length);
-
-            let activeSubscriptions = 0;
 
             for (let char of chars) {
                 if (char.properties.notify) {
                     await char.startNotifications();
                     char.addEventListener('characteristicvaluechanged', (e) => {
-                        const data = e.target.value;
-                        let hasCar = false;
-                        let raw = "";
-
-                        for (let i = 0; i < data.byteLength; i++) {
-                            let v = data.getUint8(i);
-                            raw += v.toString(16).padStart(2, '0') + " ";
-                            // Логика Magene: если байты после первого > 0, значит есть цель
-                            if (i > 0 && v > 0) hasCar = true;
-                        }
-
-                        if (hasCar) {
+                        let raw = new Uint8Array(e.target.value.buffer);
+                        let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        
+                        // Если данные изменились по сравнению с предыдущим разом
+                        if (lastData !== "" && hex !== lastData) {
                             display.className = "state-warning";
                             statusText.innerText = "МАШИНА! 🚗";
-                            playAlert(true);
-                            log("ЦЕЛЬ: " + raw);
+                            playAlert();
+                            log("ИЗМЕНЕНИЕ: " + hex);
                         } else {
                             display.className = "state-clear";
                             statusText.innerText = "ЧИСТО ✅";
                         }
-                        subStatus.innerText = "Data: " + raw;
+                        
+                        lastData = hex; // Запоминаем текущий фон
+                        subStatus.innerText = hex;
                     });
-                    log("Подписка: " + char.uuid.substring(0,8));
-                    activeSubscriptions++;
+                    log("Слушаю канал: " + char.uuid.substring(0,8));
                 }
             }
-
-            if (activeSubscriptions > 0) {
-                display.className = "state-clear";
-                statusText.innerText = "ЧИСТО ✅";
-                subStatus.innerText = "Радар активен и слушает дорогу";
-                playAlert(true); // Громкий писк в честь успеха
-            } else {
-                log("Ошибка: Характеристики Notify не найдены");
-            }
-
-        } catch (e) {
-            log("ОШИБКА: " + e.message);
-            display.className = "state-ready";
-            statusText.innerText = "ERROR";
-        }
+        } catch (e) { log("Ошибка: " + e.message); }
     };
 </script>
 </body>
