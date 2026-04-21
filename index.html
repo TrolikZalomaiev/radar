@@ -1,44 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Magene Radar PRO</title>
+    <title>Radar Final Hope</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
-        #display {
-            width: 100%; height: 180px; margin: 15px 0; border-radius: 20px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: #1a1a1a; border: 4px solid #333; transition: 0.1s;
-        }
-        #statusText { font-size: 40px; font-weight: 900; }
-        .state-clear { background: #062d19 !important; border-color: #2ecc71 !important; color: #2ecc71; }
-        .state-warning { background: #4d0000 !important; border-color: #ff4d4d !important; color: #ff4d4d; animation: blink 0.4s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        #display { width: 100%; height: 160px; margin: 15px 0; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; border: 4px solid #333; }
+        #statusText { font-size: 30px; font-weight: 900; }
+        .state-clear { background: #062d19; border-color: #2ecc71; color: #2ecc71; }
+        .state-warning { background: #4d0000; border-color: #ff4d4d; color: #ff4d4d; animation: blink 0.3s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         button { width: 100%; padding: 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; margin-bottom: 10px; }
-        #log { text-align: left; height: 160px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; border: 1px solid #222; color: #0f0; border-radius: 10px; font-family: monospace; }
+        #btn3 { display: none; background: #f39c12; color: #000; font-size: 20px; animation: pop 1s infinite alternate; }
+        @keyframes pop { from { transform: scale(1); } to { transform: scale(1.02); } }
+        #log { text-align: left; height: 150px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
     <div id="display">
         <div id="statusText">ОЖИДАНИЕ</div>
-        <div id="subStatus" style="font-size:14px; margin-top:10px; font-family: monospace;">Данные появятся тут</div>
+        <div id="subStatus" style="font-size:12px; margin-top:10px;">Подключитесь к радару</div>
     </div>
-    <button id="unlock" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
-    <button id="connect" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬ И ВКЛЮЧИТЬ</button>
+    
+    <button id="btn1" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
+    <button id="btn2" style="background:#007bff; color:#fff;">2. НАЙТИ РАДАР (ТИХО)</button>
+    <button id="btn3">3. АКТИВИРОВАТЬ СИСТЕМУ ЗВУКА!</button>
+    
     <div id="log">--- LOG ---<br></div>
 
 <script>
-    const connectBtn = document.getElementById('connect');
-    const unlockBtn = document.getElementById('unlock');
+    const btn1 = document.getElementById('btn1');
+    const btn2 = document.getElementById('btn2');
+    const btn3 = document.getElementById('btn3');
     const display = document.getElementById('display');
     const statusText = document.getElementById('statusText');
     const subStatus = document.getElementById('subStatus');
     const logDiv = document.getElementById('log');
 
     let audioCtx = null;
-    let lastLogData = "";
-    let isWarningActive = false;
+    let lastHex = "";
+
+    // Стандартный радарный профиль (Garmin/Industry standard)
+    const GARMIN_RADAR_UUID = '6a4e3200-667b-11e3-949a-0800200c9a66';
+    // Сервисный профиль Magene
+    const MAGENE_CONFIG_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}<br>`;
@@ -46,93 +52,88 @@
     }
 
     function playAlert() {
-        if (!audioCtx) return;
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        
+        if (!audioCtx || audioCtx.state === 'suspended') return;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.connect(gain); gain.connect(audioCtx.destination);
-        
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+        osc.type = 'sawtooth'; osc.frequency.value = 1500;
         gain.gain.setValueAtTime(1, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-        
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
     }
 
-    unlockBtn.onclick = () => {
+    btn1.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        audioCtx.resume();
-        unlockBtn.style.background = "#2ecc71";
-        unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
-        log("Аудио запущено");
+        btn1.style.background = "#2ecc71";
+        btn1.innerText = "ЗВУК ГОТОВ ✅";
+        log("Аудио-движок загружен в память");
     };
 
-    connectBtn.onclick = async () => {
-        if (!audioCtx) return alert("Сначала нажми кнопку 1!");
+    // Кнопка 3 - обходит блокировку браузера после долгого коннекта
+    btn3.onclick = () => {
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        playAlert(); // Тестовый писк
+        btn3.style.background = "#2ecc71";
+        btn3.innerText = "СЛУШАЮ ЭФИР 📡";
+        display.className = "state-clear";
+        statusText.innerText = "СИСТЕМА АКТИВНА";
+        log("Звук разблокирован, готов к работе!");
+    };
+
+    btn2.onclick = async () => {
+        if (!audioCtx) return alert("Нажми кнопку 1!");
         try {
-            log("Поиск радара...");
+            log("Запрос BLE...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: ['8ce5cc01-0a4d-11e9-ab14-d663bd873d93']
+                optionalServices: [MAGENE_CONFIG_UUID, GARMIN_RADAR_UUID]
             });
 
             const server = await device.gatt.connect();
-            log("Подключено!");
+            log("Соединение установлено!");
+            
+            // Показываем кнопку 3 для разблокировки звука
+            btn2.style.display = 'none';
+            btn3.style.display = 'block';
 
-            const service = await server.getPrimaryService('8ce5cc01-0a4d-11e9-ab14-d663bd873d93');
-            const chars = await service.getCharacteristics();
+            // Ищем все доступные сервисы
+            const services = await server.getPrimaryServices();
+            let foundDataChannel = false;
 
-            for (let char of chars) {
-                // Активация передачи данных
-                if (char.properties.write || char.properties.writeWithoutResponse) {
-                    try {
-                        await char.writeValue(new Uint8Array([0x01, 0x00]));
-                        log("Активация отправлена на: " + char.uuid.substring(0,8));
-                    } catch(e) {}
-                }
+            for (let service of services) {
+                log("Сканирую сервис: " + service.uuid.substring(0,8));
+                const chars = await service.getCharacteristics();
 
-                // Чтение данных
-                if (char.properties.notify) {
-                    await char.startNotifications();
-                    char.addEventListener('characteristicvaluechanged', (e) => {
-                        let raw = new Uint8Array(e.target.value.buffer);
-                        let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                for (let char of chars) {
+                    if (char.properties.notify) {
+                        await char.startNotifications();
+                        foundDataChannel = true;
                         
-                        subStatus.innerText = hex;
-                        
-                        // Логируем уникальные пакеты, чтобы видеть, что шлет радар
-                        if (hex !== lastLogData) {
-                            log("ПАКЕТ: " + hex);
-                            lastLogData = hex;
-                        }
-                        
-                        // ЛОГИКА ДЕТЕКТОРА МАШИН:
-                        // Если пакет длиннее 3 байт (добавились данные о цели) 
-                        // ИЛИ второй байт больше нуля (количество целей > 0)
-                        let hasCar = false;
-                        if (raw.length > 3 || (raw.length >= 2 && raw[1] > 0)) {
-                            hasCar = true;
-                        }
-
-                        if (hasCar) {
-                            display.className = "state-warning";
-                            statusText.innerText = "МАШИНА! 🚗";
-                            if (!isWarningActive) {
-                                playAlert(); // Пищим только один раз при появлении новой цели
-                                isWarningActive = true;
+                        char.addEventListener('characteristicvaluechanged', (e) => {
+                            let raw = new Uint8Array(e.target.value.buffer);
+                            let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                            
+                            // Если это тот самый "мертвый" пакет 01 00 06 - игнорируем его
+                            if (hex === "01 00 06") {
+                                subStatus.innerText = "Статус: " + hex;
+                                return;
                             }
-                        } else {
-                            display.className = "state-clear";
-                            statusText.innerText = "ЧИСТО ✅";
-                            isWarningActive = false; // Сбрасываем триггер
-                        }
-                    });
+
+                            if (hex !== lastHex) {
+                                log("ДАННЫЕ: " + hex);
+                                display.className = "state-warning";
+                                statusText.innerText = "МАШИНА! 🚗";
+                                playAlert();
+                                lastHex = hex;
+                            }
+                        });
+                    }
                 }
             }
+
+            if (!foundDataChannel) log("Критическая ошибка: Радар не отдает данные по BLE.");
+
         } catch (e) { log("Ошибка: " + e.message); }
     };
 </script>
