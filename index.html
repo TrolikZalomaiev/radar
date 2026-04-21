@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Radar Debugger v2</title>
+    <title>Magene Radar Activator</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
         #display {
-            width: 100%; height: 200px; margin: 15px 0; border-radius: 20px;
+            width: 100%; height: 180px; margin: 15px 0; border-radius: 20px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             background: #1a1a1a; border: 4px solid #333; transition: 0.1s;
         }
@@ -24,8 +24,8 @@
         <div id="statusText">ОЖИДАНИЕ</div>
         <div id="subStatus" style="font-size:11px; margin-top:10px; font-family: monospace;">Данные появятся тут</div>
     </div>
-    <button id="unlock" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
-    <button id="connect" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬ</button>
+    <button id="unlock" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК ✅</button>
+    <button id="connect" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬ И ВКЛЮЧИТЬ</button>
     <div id="log">--- LOG ---<br></div>
 
 <script>
@@ -37,7 +37,7 @@
     const logDiv = document.getElementById('log');
 
     let audioCtx = null;
-    let lastData = ""; // Сюда сохраняем "тишину" для сравнения
+    let lastData = "";
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}<br>`;
@@ -46,57 +46,83 @@
 
     function playAlert() {
         if (!audioCtx) return;
+        // Принудительно будим аудио
         if (audioCtx.state === 'suspended') audioCtx.resume();
+        
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth'; osc.frequency.value = 1500;
-        gain.gain.setValueAtTime(1, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
         if (navigator.vibrate) navigator.vibrate([400, 100, 400]);
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.resume();
         unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
         statusText.innerText = "READY";
+        log("Аудио запущено");
     };
 
     connectBtn.onclick = async () => {
+        if (!audioCtx) return alert("Сначала нажми кнопку 1!");
         try {
+            log("Поиск радара...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: ['8ce5cc01-0a4d-11e9-ab14-d663bd873d93']
             });
+
             const server = await device.gatt.connect();
+            log("Подключено!");
+            playAlert(); // Громкий писк при коннекте
+
             const service = await server.getPrimaryService('8ce5cc01-0a4d-11e9-ab14-d663bd873d93');
             const chars = await service.getCharacteristics();
 
             for (let char of chars) {
+                // Если характеристика поддерживает запись, отправляем команду активации
+                if (char.properties.write || char.properties.writeWithoutResponse) {
+                    try {
+                        // Команда активации потока (стандарт для многих датчиков)
+                        await char.writeValue(new Uint8Array([0x01, 0x00]));
+                        log("Команда активации отправлена на: " + char.uuid.substring(0,8));
+                    } catch(e) {}
+                }
+
                 if (char.properties.notify) {
                     await char.startNotifications();
                     char.addEventListener('characteristicvaluechanged', (e) => {
                         let raw = new Uint8Array(e.target.value.buffer);
                         let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
                         
-                        // Если данные изменились по сравнению с предыдущим разом
+                        subStatus.innerText = hex;
+                        
+                        // Если данные изменились (радар что-то увидел)
                         if (lastData !== "" && hex !== lastData) {
                             display.className = "state-warning";
                             statusText.innerText = "МАШИНА! 🚗";
                             playAlert();
-                            log("ИЗМЕНЕНИЕ: " + hex);
+                            log("D: " + hex);
                         } else {
                             display.className = "state-clear";
                             statusText.innerText = "ЧИСТО ✅";
                         }
-                        
-                        lastData = hex; // Запоминаем текущий фон
-                        subStatus.innerText = hex;
+                        lastData = hex;
                     });
                     log("Слушаю канал: " + char.uuid.substring(0,8));
                 }
             }
+            display.className = "state-clear";
+            statusText.innerText = "ЧИСТО ✅";
         } catch (e) { log("Ошибка: " + e.message); }
     };
 </script>
