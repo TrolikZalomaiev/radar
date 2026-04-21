@@ -1,86 +1,39 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar Hacker Edition</title>
+    <title>Radar Final Hack</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { 
-            font-family: sans-serif; 
-            text-align: center; 
-            padding: 20px; 
-            background: #0a0a0a; 
-            color: #e0e0e0; 
-        }
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #0a0a0a; color: #fff; }
         .container { max-width: 450px; margin: 0 auto; }
-        h1 { color: #007bff; font-size: 24px; }
-        
         button { 
-            width: 100%;
-            padding: 18px; 
-            font-size: 16px; 
-            font-weight: bold;
-            cursor: pointer; 
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            border-radius: 12px; 
-            margin-bottom: 12px;
-            transition: 0.2s;
+            width: 100%; padding: 20px; font-size: 18px; font-weight: bold;
+            cursor: pointer; background: #007bff; color: white; border: none; 
+            border-radius: 12px; margin-bottom: 15px;
         }
-        button:active { background: #0056b3; transform: translateY(2px); }
         #unlockAudio { background: #6c757d; }
-        
         #statusBox {
-            margin: 20px 0;
-            padding: 40px 20px;
-            border-radius: 20px;
-            background: #1a1a1a;
-            font-size: 32px;
-            font-weight: 800;
-            text-transform: uppercase;
+            margin: 20px 0; padding: 40px 20px; border-radius: 20px;
+            background: #1a1a1a; font-size: 28px; font-weight: 800;
             border: 2px solid #333;
         }
-        
         .clear { color: #2ecc71; border-color: #2ecc71 !important; }
-        .warning { 
-            color: #e74c3c; 
-            border-color: #e74c3c !important; 
-            animation: pulse 0.4s infinite;
-            background: #2c1a1a !important;
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-
+        .warning { color: #e74c3c; border-color: #e74c3c !important; background: #2c1a1a !important; }
         #log { 
-            margin-top: 15px; 
-            font-family: monospace;
-            font-size: 11px; 
-            color: #00ff00; 
-            text-align: left; 
-            height: 150px; 
-            overflow-y: auto; 
-            background: #000;
-            padding: 10px;
-            border: 1px solid #333;
-            border-radius: 8px;
+            margin-top: 15px; font-family: monospace; font-size: 11px; 
+            color: #0f0; text-align: left; height: 180px; 
+            overflow-y: auto; background: #000; padding: 10px; border-radius: 8px;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>MAGENE L508 RADAR</h1>
-    
-    <button id="unlockAudio">1. АКТИВИРОВАТЬ ЗВУК</button>
-    <button id="connect">2. ПОИСК И ПОДКЛЮЧЕНИЕ</button>
-    
-    <div id="statusBox">ОТКЛЮЧЕНО</div>
-    
+    <h1>MAGENE RADAR PRO</h1>
+    <button id="unlockAudio">1. ЗВУК</button>
+    <button id="connect">2. ПОДКЛЮЧИТЬ</button>
+    <div id="statusBox">ОЖИДАНИЕ</div>
     <div id="log">--- LOG START ---<br></div>
 </div>
 
@@ -93,69 +46,67 @@
     let audioCtx = null;
 
     function log(msg) {
-        const time = new Date().toLocaleTimeString();
-        logDiv.innerHTML += `[${time}] ${msg}<br>`;
+        logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        unlockBtn.style.background = "#2ecc71";
         unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
-        log("Аудио-движок запущен");
+        log("Аудио активно");
     };
 
     function playAlert() {
         if (!audioCtx) return;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'square'; 
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'square'; osc.frequency.setValueAtTime(900, audioCtx.currentTime);
         gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.25);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
     }
 
     connectBtn.onclick = async () => {
         try {
-            log("Запрос Bluetooth (все устройства)...");
+            log("Запрос Bluetooth...");
             
-            // Запрашиваем доступ ко ВСЕМ устройствам, но объявляем интерес к сервисам радара
+            // Список ВСЕХ возможных сервисов, которые могут быть у радара
+            const allPossibleServices = [
+                '00001812-0000-1000-8000-00805f9b34fb', // HID
+                '0000180a-0000-1000-8000-00805f9b34fb', // Info
+                '0000180f-0000-1000-8000-00805f9b34fb', // Battery
+                '0000feee-0000-1000-8000-00805f9b34fb', // Magene Custom
+                '0000ff01-0000-1000-8000-00805f9b34fb', // Magene Custom 2
+                '00001101-0000-1000-8000-00805f9b34fb'  // Serial
+            ];
+
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: [
-                    '00001812-0000-1000-8000-00805f9b34fb', // Основной (HID/Radar)
-                    '0000180f-0000-1000-8000-00805f9b34fb', // Батарея
-                    '0000180a-0000-1000-8000-00805f9b34fb'  // Инфо
-                ]
+                optionalServices: allPossibleServices
             });
 
-            log("Подключение к: " + device.name);
+            log("Подключение к " + device.name);
             const server = await device.gatt.connect();
             
-            log("Поиск разрешенных сервисов...");
-            // Вместо одного сервиса берем все, что разрешил Chrome
+            log("Поиск сервисов...");
+            // Пробуем получить все сервисы по очереди, пока Chrome не разрешит
             const services = await server.getPrimaryServices();
-            log("Доступно сервисов: " + services.length);
+            log("Найдено разрешенных сервисов: " + services.length);
 
-            let activeChars = 0;
+            if (services.length === 0) {
+                log("ОШИБКА: Браузер заблокировал все сервисы. Попробуй включить флаги в chrome://flags");
+            }
 
             for (let service of services) {
-                log("Изучаю сервис: " + service.uuid);
+                log("Сканирую сервис: " + service.uuid);
                 const chars = await service.getCharacteristics();
                 
                 for (let char of chars) {
-                    // Ищем характеристику, которая умеет слать уведомления (Notify)
                     if (char.properties.notify) {
                         await char.startNotifications();
-                        char.addEventListener('characteristicvaluechanged', (event) => {
-                            const data = event.target.value;
-                            // Если первый байт > 0, значит есть цель
-                            const carDetected = data.getUint8(0) > 0;
-                            
-                            if (carDetected) {
+                        char.addEventListener('characteristicvaluechanged', (e) => {
+                            const val = e.target.value.getUint8(0);
+                            if (val > 0) {
                                 statusBox.innerText = "МАШИНА! 🚗";
                                 statusBox.className = "warning";
                                 playAlert();
@@ -164,28 +115,21 @@
                                 statusBox.className = "clear";
                             }
                         });
-                        log("Подписка активна: " + char.uuid.substring(0,8));
-                        activeChars++;
+                        log("ПОДПИСКА ОК: " + char.uuid.substring(0,6));
                     }
                 }
             }
             
-            if (activeChars > 0) {
-                statusBox.innerText = "ГОТОВО";
-                statusBox.className = "clear";
-                connectBtn.innerText = "РАДАР ПОДКЛЮЧЕН";
-                connectBtn.disabled = true;
-                log("Успешно! Махай рукой перед радаром.");
-            } else {
-                log("Ошибка: Нужные характеристики не найдены.");
-            }
+            statusBox.innerText = "АКТИВЕН";
+            statusBox.className = "clear";
 
         } catch (e) {
-            log("КРИТИЧЕСКАЯ ОШИБКА: " + e.message);
-            statusBox.innerText = "ОШИБКА СВЯЗИ";
+            log("ОШИБКА: " + e.name + " - " + e.message);
+            if (e.name === "SecurityError") {
+                log("Совет: Введи в Chrome адрес chrome://flags и включи 'Web Bluetooth API'");
+            }
         }
     };
 </script>
-
 </body>
 </html>
