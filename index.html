@@ -1,160 +1,107 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar Hacker</title>
+    <title>Magene Radar Polling</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
-        #display { width: 100%; height: 160px; margin: 15px 0; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; border: 4px solid #333; }
-        #statusText { font-size: 30px; font-weight: 900; }
-        .state-clear { background: #062d19; border-color: #2ecc71; color: #2ecc71; }
-        .state-warning { background: #4d0000; border-color: #ff4d4d; color: #ff4d4d; animation: blink 0.3s infinite; }
+        #display { width: 100%; height: 150px; margin: 15px 0; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; border: 4px solid #333; transition: 0.2s; }
+        .state-clear { background: #062d19; border-color: #2ecc71; }
+        .state-warning { background: #4d0000; border-color: #ff4d4d; animation: blink 0.4s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        button { width: 100%; padding: 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; margin-bottom: 10px; }
-        #btn3 { display: none; background: #f39c12; color: #000; font-size: 20px; }
-        #log { text-align: left; height: 200px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; }
+        button { width: 100%; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; background: #007bff; color: #fff; }
+        #log { text-align: left; height: 200px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div id="display">
-        <div id="statusText">ОФФЛАЙН</div>
-        <div id="subStatus" style="font-size:12px; margin-top:10px; opacity:0.6;">Жду подключения</div>
+        <div id="statusText" style="font-size: 24px; font-weight: bold;">ГОТОВ</div>
+        <div id="subStatus" style="font-size: 12px; opacity: 0.7;">Нажми кнопку для запуска</div>
     </div>
     
-    <button id="btn1" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
-    <button id="btn2" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬСЯ 📡</button>
-    <button id="btn3">3. АКТИВИРОВАТЬ ЭКРАН ✅</button>
+    <button id="startBtn">ПОДКЛЮЧИТЬ И ОПРАШИВАТЬ</button>
     
     <div id="log">Лог системы:<br></div>
 
 <script>
-    const btn1 = document.getElementById('btn1');
-    const btn2 = document.getElementById('btn2');
-    const btn3 = document.getElementById('btn3');
+    const logDiv = document.getElementById('log');
     const display = document.getElementById('display');
     const statusText = document.getElementById('statusText');
     const subStatus = document.getElementById('subStatus');
-    const logDiv = document.getElementById('log');
-
-    let audioCtx = null;
     const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
 
     function log(msg) {
-        logDiv.innerHTML += `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}<br>`;
+        logDiv.innerHTML += `> ${msg}<br>`;
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    function playAlert() {
-        if (!audioCtx || audioCtx.state === 'suspended') return;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth'; osc.frequency.value = 1400;
-        gain.gain.setValueAtTime(1, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-        if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
-    }
-
-    btn1.onclick = () => {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        btn1.style.background = "#2ecc71";
-        btn1.innerText = "ЗВУК ГОТОВ ✅";
-        log("Аудио-движок запущен");
-    };
-
-    btn3.onclick = () => {
-        if (audioCtx) audioCtx.resume();
-        playAlert();
-        btn3.style.background = "#2ecc71";
-        btn3.innerText = "СИСТЕМА В РАБОТЕ 🚗";
-        log("Звук разблокирован");
-    };
-
-    async function unlockRadar(char) {
-        const magicKeys = [
-            new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
-            new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0f])
-        ];
-
-        // Отправляем пароли только один раз, чтобы не спамить
-        for (let i = 0; i < magicKeys.length; i++) {
-            try {
-                await char.writeValue(magicKeys[i]);
-                log(`Отправлен пароль ${i+1}`);
-                await new Promise(r => setTimeout(r, 250)); 
-            } catch(e) { log("Ошибка ключа: " + e.message); }
-        }
-    }
-
-    btn2.onclick = async () => {
-        if (!audioCtx) return alert("Сначала нажми кнопку 1!");
+    document.getElementById('startBtn').onclick = async () => {
         try {
-            log("Подключение...");
+            log("Запрос устройства...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [SERVICE_UUID]
             });
 
             const server = await device.gatt.connect();
-            log("Bluetooth соединен!");
-            
-            btn2.style.display = 'none';
-            btn3.style.display = 'block';
-
+            log("Соединено с радаром");
             const service = await server.getPrimaryService(SERVICE_UUID);
             const chars = await service.getCharacteristics();
 
-            let targetChannel = null;
+            // Ключи активации
+            const keys = [
+                new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
+                new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0f])
+            ];
 
-            // ШАГ 1: Включаем прослушку
+            // 1. Активируем радар ключами
             for (let char of chars) {
-                if (char.properties.notify) {
-                    await char.startNotifications();
-                    char.addEventListener('characteristicvaluechanged', (e) => {
-                        let raw = new Uint8Array(e.target.value.buffer);
-                        let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                        
-                        subStatus.innerText = "Эфир: " + hex;
-
-                        // БЕЛЫЙ СПИСОК (Системные ответы и фоновый шум, которые нужно игнорировать)
-                        const ignoreList = [
-                            "01 00 06", "01 00", "05 01 06", 
-                            "05 01 02 02 01 03 0e 06", 
-                            "05 01 03 01 01 01 03 06",
-                            "05 01 03 01 01 01 03 0f 06"
-                        ];
-
-                        if (!ignoreList.includes(hex)) {
-                            display.className = "state-warning";
-                            statusText.innerText = "МАШИНА! 🚗";
-                            playAlert();
-                            log("РЕАЛЬНАЯ ЦЕЛЬ: " + hex);
-                        } else {
-                            display.className = "state-clear";
-                            statusText.innerText = "ЧИСТО ✅";
-                        }
-                    });
-                    log("Слушаю канал: " + char.uuid.substring(0,4));
-                }
-                
-                // Запоминаем канал для записи
                 if (char.properties.write || char.properties.writeWithoutResponse) {
-                    targetChannel = char;
+                    for (let key of keys) {
+                        await char.writeValue(key);
+                        log("Отправлен код активации...");
+                        await new Promise(r => setTimeout(r, 200));
+                    }
                 }
             }
 
-            // ШАГ 2: Взламываем! (Отправляем только в один правильный канал)
-            if (targetChannel) {
-                log("Взламываю канал...");
-                await unlockRadar(targetChannel);
+            log("Начинаю цикл опроса...");
+            statusText.innerText = "СЛУШАЮ...";
+
+            // 2. ЦИКЛ ОПРОСА (Зацикливаем чтение)
+            while (device.gatt.connected) {
+                for (let char of chars) {
+                    if (char.properties.read) {
+                        try {
+                            const value = await char.readValue();
+                            const hex = Array.from(new Uint8Array(value.buffer))
+                                             .map(b => b.toString(16).padStart(2, '0')).join(' ');
+                            
+                            subStatus.innerText = "Сырые данные: " + hex;
+
+                            // Если данные изменились и это не тишина
+                            if (hex !== "01 00 06" && hex !== "" && !hex.startsWith("57 0a")) {
+                                display.className = "state-warning";
+                                statusText.innerText = "ЦЕЛЬ ОБНАРУЖЕНА!";
+                                log("ДАННЫЕ: " + hex);
+                            } else {
+                                display.className = "state-clear";
+                                statusText.innerText = "ЧИСТО";
+                            }
+                        } catch (e) {
+                            // Игнорируем ошибки одиночных чтений
+                        }
+                    }
+                }
+                // Пауза между опросами 300мс (чтобы не перегреть Bluetooth)
+                await new Promise(r => setTimeout(r, 300));
             }
-            
-            display.className = "state-clear";
-            statusText.innerText = "АКТИВЕН";
-            
-        } catch (e) { log("Ошибка: " + e.message); }
+
+        } catch (e) {
+            log("Ошибка: " + e);
+            statusText.innerText = "ОШИБКА";
+        }
     };
 </script>
 </body>
