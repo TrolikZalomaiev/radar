@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Radar Force Unlock</title>
+    <title>Magene Radar Unlocked</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -18,15 +18,15 @@
 </head>
 <body>
     <div id="display">
-        <div id="statusText">OFFLINE</div>
-        <div id="subStatus" style="font-size:12px; margin-top:10px; opacity:0.6;">Нажми кнопки по порядку</div>
+        <div id="statusText">ОФФЛАЙН</div>
+        <div id="subStatus" style="font-size:12px; margin-top:10px; opacity:0.6;">Жду подключения</div>
     </div>
     
-    <button id="btn1" style="background:#444; color:#fff;">1. ВКЛЮЧИТЬ ЗВУК</button>
-    <button id="btn2" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬ И ПРОБУДИТЬ</button>
-    <button id="btn3">3. АКТИВИРОВАТЬ ЗВУК ✅</button>
+    <button id="btn1" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
+    <button id="btn2" style="background:#007bff; color:#fff;">2. ВЗЛОМАТЬ РАДАР 📡</button>
+    <button id="btn3">3. АКТИВИРОВАТЬ ЭКРАН И ЗВУК ✅</button>
     
-    <div id="log">Лог команд:<br></div>
+    <div id="log">Лог системы:<br></div>
 
 <script>
     const btn1 = document.getElementById('btn1');
@@ -68,25 +68,22 @@
         if (audioCtx) audioCtx.resume();
         playAlert();
         btn3.style.background = "#2ecc71";
-        btn3.innerText = "ЗВУК АКТИВЕН 🔊";
-        log("Канал звука открыт принудительно");
+        btn3.innerText = "РАДАР В РАБОТЕ 🚗";
+        log("Система полностью активна");
     };
 
-    async function wakeUpRadar(char) {
-        // Список команд активации (пытаемся угадать код приложения Magene)
-        const commands = [
-            new Uint8Array([0x01, 0x00]),
-            new Uint8Array([0x01]),
-            new Uint8Array([0x02]),
-            new Uint8Array([0x05, 0x01]),
-            new Uint8Array([0x01, 0x01])
+    // ФУНКЦИЯ ВЗЛОМА (Те самые ключи из лога!)
+    async function unlockRadar(char) {
+        const magicKeys = [
+            new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
+            new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0e])
         ];
 
-        for (let cmd of commands) {
+        for (let i = 0; i < magicKeys.length; i++) {
             try {
-                await char.writeValue(cmd);
-                log("Отправлен пинг: " + Array.from(cmd).join(' '));
-                await new Promise(r => setTimeout(r, 300)); // Пауза между попытками
+                await char.writeValue(magicKeys[i]);
+                log(`Отправлен ключ ${i+1}`);
+                await new Promise(r => setTimeout(r, 200)); // Пауза
             } catch(e) {}
         }
     }
@@ -94,14 +91,14 @@
     btn2.onclick = async () => {
         if (!audioCtx) return alert("Сначала нажми кнопку 1!");
         try {
-            log("Поиск радара...");
+            log("Подключение...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [SERVICE_UUID]
             });
 
             const server = await device.gatt.connect();
-            log("Связь установлена!");
+            log("Bluetooth соединен!");
             
             btn2.style.display = 'none';
             btn3.style.display = 'block';
@@ -110,26 +107,26 @@
             const chars = await service.getCharacteristics();
 
             for (let char of chars) {
-                // Если характеристика позволяет запись - шлем "пробуждающие" байты
+                // Отправляем секретные ключи в канал записи
                 if (char.properties.write || char.properties.writeWithoutResponse) {
-                    log("Пробуждаю канал: " + char.uuid.substring(0,8));
-                    await wakeUpRadar(char);
+                    await unlockRadar(char);
                 }
 
+                // Слушаем ответ
                 if (char.properties.notify) {
                     await char.startNotifications();
                     char.addEventListener('characteristicvaluechanged', (e) => {
                         let raw = new Uint8Array(e.target.value.buffer);
                         let hex = Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
                         
-                        subStatus.innerText = "DATA: " + hex;
+                        subStatus.innerText = "Эфир: " + hex;
 
                         // Если пришло что-то кроме фонового пакета 01 00 06
                         if (hex !== "01 00 06") {
                             display.className = "state-warning";
                             statusText.innerText = "МАШИНА! 🚗";
                             playAlert();
-                            log("СИГНАЛ: " + hex);
+                            log("ЦЕЛЬ: " + hex);
                         } else {
                             display.className = "state-clear";
                             statusText.innerText = "ЧИСТО ✅";
