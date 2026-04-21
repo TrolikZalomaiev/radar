@@ -1,26 +1,25 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar Scanner V5</title>
+    <title>Magene Radar Ultimate</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
-        #display { width: 100%; height: 120px; margin-bottom: 10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: #1a1a1a; border: 2px solid #333; }
+        #display { width: 100%; height: 120px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: #1a1a1a; border: 3px solid #333; margin-bottom: 10px; }
         #log { text-align: left; height: 350px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; }
-        button { width: 100%; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; background: #007bff; color: #fff; margin-bottom: 10px; }
+        button { width: 100%; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; background: #27ae60; color: #fff; }
     </style>
 </head>
 <body>
-    <div id="display"><div id="statusText" style="font-size: 24px;">ИЩЕМ КАНАЛ...</div></div>
-    <button id="startBtn">ЗАПУСТИТЬ СКАНЕР 📡</button>
-    <div id="log">Лог поиска...<br></div>
+    <div id="display"><div id="statusText" style="font-size: 24px;">ГОТОВ К БОЮ</div></div>
+    <button id="startBtn">ПОДКЛЮЧИТЬ И ВЗЛОМАТЬ</button>
+    <div id="log">Лог ультиматума...<br></div>
 
 <script>
     const logDiv = document.getElementById('log');
     const statusText = document.getElementById('statusText');
     const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
-    let lastData = {}; // Хранилище последних данных по каждому каналу
 
     function log(msg) {
         logDiv.innerHTML += `> ${msg}<br>`;
@@ -35,52 +34,43 @@
             const server = await device.gatt.connect();
             const service = await server.getPrimaryService(SERVICE_UUID);
             const chars = await service.getCharacteristics();
-            log("Подключено. Сканирую каналы...");
+            log("Связь есть. Начинаю штурм...");
 
-            // Ключи из твоего дампа (на всякий случай)
+            // 1. Сначала подписываемся на ВСЁ, что движется
+            for (let char of chars) {
+                if (char.properties.notify) {
+                    try {
+                        await char.startNotifications();
+                        char.addEventListener('characteristicvaluechanged', (e) => {
+                            let hex = Array.from(new Uint8Array(e.target.value.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                            if (hex !== "01 00 06") {
+                                log(`!!! КАНАЛ ${char.uuid.substring(0,4)} ДАЛ ДАННЫЕ: ${hex}`);
+                                statusText.innerText = "ЕСТЬ КОНТАКТ!";
+                            }
+                        });
+                        log(`Слушаю ${char.uuid.substring(0,4)}...`);
+                    } catch(e) {}
+                }
+            }
+
+            // 2. Ждем секунду и шлем ключи во все пишущие каналы
+            await new Promise(r => setTimeout(r, 1000));
             const keys = [
                 new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
                 new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0f])
             ];
 
-            // Активация
             for (let char of chars) {
-                if (char.properties.write) {
-                    for (let key of keys) await char.writeValue(key).catch(()=>{});
-                }
-            }
-
-            // ЦИКЛ ПОИСКА ЖИВОГО КАНАЛА
-            while (device.gatt.connected) {
-                for (let char of chars) {
-                    if (char.properties.read) {
-                        try {
-                            const value = await char.readValue();
-                            const hex = Array.from(new Uint8Array(value.buffer))
-                                             .map(b => b.toString(16).padStart(2, '0')).join(' ');
-                            
-                            const charId = char.uuid.substring(0, 4);
-
-                            // Если данные в этом канале изменились по сравнению с прошлым разом
-                            if (hex !== lastData[charId]) {
-                                lastData[charId] = hex;
-                                log(`КАНАЛ ${charId} ИЗМЕНИЛСЯ: ${hex}`);
-                                
-                                // Если это не фонарь (57 0a), то это может быть машина!
-                                if (!hex.startsWith("57 0a") && hex.length > 5) {
-                                    statusText.innerText = "ДВИЖЕНИЕ!";
-                                    document.getElementById('display').style.borderColor = "#ff4d4d";
-                                    setTimeout(() => { 
-                                        statusText.innerText = "СЛУШАЮ..."; 
-                                        document.getElementById('display').style.borderColor = "#333";
-                                    }, 1000);
-                                }
-                            }
-                        } catch (e) {}
+                if (char.properties.write || char.properties.writeWithoutResponse) {
+                    for (let key of keys) {
+                        await char.writeValue(key).catch(()=>{});
+                        log(`Ключ в ${char.uuid.substring(0,4)} отправлен`);
                     }
                 }
-                await new Promise(r => setTimeout(r, 150)); // Быстрый опрос
             }
+            log("Штурм окончен. Проверь реакцию!");
+            statusText.innerText = "ЖДУ МАШИНУ";
+
         } catch (e) { log("Ошибка: " + e); }
     };
 </script>
