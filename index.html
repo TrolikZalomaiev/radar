@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar Unlocked</title>
+    <title>Magene Radar Hacker</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -13,7 +13,7 @@
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         button { width: 100%; padding: 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; margin-bottom: 10px; }
         #btn3 { display: none; background: #f39c12; color: #000; font-size: 20px; }
-        #log { text-align: left; height: 180px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; }
+        #log { text-align: left; height: 200px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; }
     </style>
 </head>
 <body>
@@ -23,8 +23,8 @@
     </div>
     
     <button id="btn1" style="background:#444; color:#fff;">1. РАЗРЕШИТЬ ЗВУК</button>
-    <button id="btn2" style="background:#007bff; color:#fff;">2. ВЗЛОМАТЬ РАДАР 📡</button>
-    <button id="btn3">3. АКТИВИРОВАТЬ ЭКРАН И ЗВУК ✅</button>
+    <button id="btn2" style="background:#007bff; color:#fff;">2. ПОДКЛЮЧИТЬСЯ 📡</button>
+    <button id="btn3">3. АКТИВИРОВАТЬ ЭКРАН ✅</button>
     
     <div id="log">Лог системы:<br></div>
 
@@ -68,11 +68,10 @@
         if (audioCtx) audioCtx.resume();
         playAlert();
         btn3.style.background = "#2ecc71";
-        btn3.innerText = "РАДАР В РАБОТЕ 🚗";
-        log("Система полностью активна");
+        btn3.innerText = "СИСТЕМА В РАБОТЕ 🚗";
+        log("Звук разблокирован");
     };
 
-    // ФУНКЦИЯ ВЗЛОМА (Те самые ключи из лога!)
     async function unlockRadar(char) {
         const magicKeys = [
             new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
@@ -83,8 +82,8 @@
             try {
                 await char.writeValue(magicKeys[i]);
                 log(`Отправлен ключ ${i+1}`);
-                await new Promise(r => setTimeout(r, 200)); // Пауза
-            } catch(e) {}
+                await new Promise(r => setTimeout(r, 250)); // Ждем четверть секунды
+            } catch(e) { log("Ошибка ключа: " + e.message); }
         }
     }
 
@@ -106,13 +105,8 @@
             const service = await server.getPrimaryService(SERVICE_UUID);
             const chars = await service.getCharacteristics();
 
+            // ШАГ 1: Сначала надеваем наушники (подписываемся на ВСЕ каналы)
             for (let char of chars) {
-                // Отправляем секретные ключи в канал записи
-                if (char.properties.write || char.properties.writeWithoutResponse) {
-                    await unlockRadar(char);
-                }
-
-                // Слушаем ответ
                 if (char.properties.notify) {
                     await char.startNotifications();
                     char.addEventListener('characteristicvaluechanged', (e) => {
@@ -121,7 +115,6 @@
                         
                         subStatus.innerText = "Эфир: " + hex;
 
-                        // Если пришло что-то кроме фонового пакета 01 00 06
                         if (hex !== "01 00 06") {
                             display.className = "state-warning";
                             statusText.innerText = "МАШИНА! 🚗";
@@ -132,10 +125,21 @@
                             statusText.innerText = "ЧИСТО ✅";
                         }
                     });
+                    log("Слушаю канал: " + char.uuid.substring(0,4));
                 }
             }
+
+            // ШАГ 2: Только теперь отправляем пароли!
+            for (let char of chars) {
+                if (char.properties.write || char.properties.writeWithoutResponse) {
+                    log("Взламываю канал: " + char.uuid.substring(0,4));
+                    await unlockRadar(char);
+                }
+            }
+            
             display.className = "state-clear";
             statusText.innerText = "АКТИВЕН";
+            
         } catch (e) { log("Ошибка: " + e.message); }
     };
 </script>
