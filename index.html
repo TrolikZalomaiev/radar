@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Magene Radar Polling</title>
+    <title>Magene Radar PRO</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -9,17 +9,17 @@
         button { width: 100%; padding: 25px; font-size: 20px; margin-bottom: 15px; cursor: pointer; border-radius: 15px; border: none; font-weight: bold; }
         #unlock { background: #444; color: #fff; }
         #connect { background: #007bff; color: #fff; }
-        #status { margin: 20px 0; padding: 40px; border-radius: 25px; font-size: 30px; font-weight: 900; background: #111; border: 3px solid #333; }
+        #status { margin: 20px 0; padding: 40px; border-radius: 25px; font-size: 35px; font-weight: 900; background: #111; border: 3px solid #333; }
         .warning { background: #e74c3c !important; border-color: #fff !important; }
-        #log { font-family: monospace; font-size: 11px; color: #0f0; text-align: left; height: 150px; overflow-y: auto; background: #050505; padding: 10px; }
+        #log { font-family: monospace; font-size: 11px; color: #0f0; text-align: left; height: 180px; overflow-y: auto; background: #050505; padding: 10px; border-radius: 10px; border: 1px solid #222; }
     </style>
 </head>
 <body>
-    <h1>RADAR POLLING MODE</h1>
-    <button id="unlock">1. ВКЛЮЧИТЬ ЗВУК</button>
-    <button id="connect">2. ЗАПУСТИТЬ МОНИТОРИНГ</button>
-    <div id="status">READY</div>
-    <div id="log">Ожидание...<br></div>
+    <h1>MAGENE RADAR</h1>
+    <button id="unlock">1. ВКЛЮЧИТЬ ЗВУК И ВИБРО</button>
+    <button id="connect">2. ПОДКЛЮЧИТЬ</button>
+    <div id="status">ОЖИДАНИЕ</div>
+    <div id="log">--- LOG START ---<br></div>
 
 <script>
     const connectBtn = document.getElementById('connect');
@@ -29,7 +29,6 @@
 
     let audioCtx = null;
     const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
-    const CHAR_UUID = '8ce5cc02-0a4d-11e9-ab14-d663bd873d93'; // Та самая характеристика
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
@@ -43,73 +42,74 @@
         const gain = audioCtx.createGain();
         osc.connect(gain); gain.connect(audioCtx.destination);
         osc.type = 'square';
-        osc.frequency.value = 1200;
+        osc.frequency.value = 1000;
         gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
         osc.start(); osc.stop(audioCtx.currentTime + 0.4);
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        unlockBtn.style.background = "#28a745";
-        log("Звук готов");
+        unlockBtn.style.background = "#2ecc71";
+        unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
+        log("Аудио-движок запущен");
     };
 
-    async function startPolling(characteristic) {
-        log("Цикл опроса запущен...");
-        while (true) {
-            try {
-                const value = await characteristic.readValue();
-                let hex = "";
-                let hasCar = false;
-
-                for (let i = 0; i < value.byteLength; i++) {
-                    let v = value.getUint8(i);
-                    hex += v.toString(16).padStart(2, '0') + " ";
-                    // Если во 2-м или 3-м байте что-то есть
-                    if (i > 0 && v > 0) hasCar = true;
-                }
-
-                if (hasCar) {
-                    if (statusBox.innerText !== "МАШИНА! 🚗") {
-                        statusBox.innerText = "МАШИНА! 🚗";
-                        statusBox.className = "warning";
-                        playAlert();
-                    }
-                } else {
-                    statusBox.innerText = "ЧИСТО ✅";
-                    statusBox.className = "clear";
-                }
-                
-                // Скорость опроса (каждые 200 миллисекунд)
-                await new Promise(r => setTimeout(r, 200));
-            } catch (e) {
-                log("Ошибка опроса: " + e.message);
-                break;
-            }
-        }
-    }
-
     connectBtn.onclick = async () => {
+        if (!audioCtx) return alert("Сначала нажми кнопку 1!");
         try {
-            log("Поиск...");
+            log("Запрос устройства...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [SERVICE_UUID]
             });
 
+            log("Коннект к " + device.name);
             const server = await device.gatt.connect();
-            log("Подключено!");
+            
+            // Писк при успешном коннекте
             playAlert();
 
             const service = await server.getPrimaryService(SERVICE_UUID);
-            const characteristic = await service.getCharacteristic(CHAR_UUID);
-            
-            statusBox.innerText = "МОНИТОРИНГ...";
-            startPolling(characteristic);
+            const chars = await service.getCharacteristics();
+            log("Найдено характеристик: " + chars.length);
 
-        } catch (e) { log("ОШИБКА: " + e.message); }
+            for (let char of chars) {
+                if (char.properties.notify) {
+                    await char.startNotifications();
+                    char.addEventListener('characteristicvaluechanged', (e) => {
+                        const data = e.target.value;
+                        let hex = "";
+                        let hasCar = false;
+                        
+                        for (let i = 0; i < data.byteLength; i++) {
+                            let v = data.getUint8(i);
+                            hex += v.toString(16).padStart(2, '0') + " ";
+                            // Радары Magene обычно шлют флаг цели во 2-м или 3-м байте
+                            if (i > 0 && v > 0) hasCar = true;
+                        }
+                        
+                        log("DATA: " + hex);
+
+                        if (hasCar) {
+                            statusBox.innerText = "МАШИНА! 🚗";
+                            statusBox.className = "warning";
+                            playAlert();
+                        } else {
+                            statusBox.innerText = "ЧИСТО ✅";
+                            statusBox.className = "clear";
+                        }
+                    });
+                    log("Слушаю Notify на: " + char.uuid.substring(0,8));
+                }
+            }
+            statusBox.innerText = "АКТИВЕН";
+            statusBox.className = "clear";
+
+        } catch (e) {
+            log("ОШИБКА: " + e.message);
+        }
     };
 </script>
 </body>
