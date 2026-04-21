@@ -1,40 +1,55 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Radar Final Hack</title>
+    <title>Magene Radar Ultimate</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #0a0a0a; color: #fff; }
+        body { 
+            font-family: -apple-system, system-ui, sans-serif; 
+            text-align: center; padding: 20px; background: #000; color: #fff; 
+        }
         .container { max-width: 450px; margin: 0 auto; }
+        
         button { 
             width: 100%; padding: 20px; font-size: 18px; font-weight: bold;
             cursor: pointer; background: #007bff; color: white; border: none; 
-            border-radius: 12px; margin-bottom: 15px;
+            border-radius: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,123,255,0.3);
         }
-        #unlockAudio { background: #6c757d; }
+        #unlockAudio { background: #444; }
+        #unlockAudio.ready { background: #28a745; }
+        
         #statusBox {
-            margin: 20px 0; padding: 40px 20px; border-radius: 20px;
-            background: #1a1a1a; font-size: 28px; font-weight: 800;
-            border: 2px solid #333;
+            margin: 20px 0; padding: 50px 20px; border-radius: 25px;
+            background: #111; font-size: 35px; font-weight: 900;
+            border: 3px solid #333; transition: 0.2s;
         }
         .clear { color: #2ecc71; border-color: #2ecc71 !important; }
-        .warning { color: #e74c3c; border-color: #e74c3c !important; background: #2c1a1a !important; }
+        .warning { 
+            color: #fff; background: #e74c3c !important; 
+            border-color: #fff !important; animation: blink 0.4s infinite;
+        }
+        
+        @keyframes blink { 0% {opacity: 1} 50% {opacity: 0.7} 100% {opacity: 1} }
+
         #log { 
-            margin-top: 15px; font-family: monospace; font-size: 11px; 
-            color: #0f0; text-align: left; height: 180px; 
-            overflow-y: auto; background: #000; padding: 10px; border-radius: 8px;
+            margin-top: 15px; font-family: monospace; font-size: 12px; 
+            color: #0f0; text-align: left; height: 150px; 
+            overflow-y: auto; background: #050505; padding: 15px; border-radius: 10px;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>MAGENE RADAR PRO</h1>
-    <button id="unlockAudio">1. ЗВУК</button>
-    <button id="connect">2. ПОДКЛЮЧИТЬ</button>
-    <div id="statusBox">ОЖИДАНИЕ</div>
-    <div id="log">--- LOG START ---<br></div>
+    <h2 style="color: #007bff">MAGENE L508 RADAR</h2>
+    
+    <button id="unlockAudio">1. АКТИВИРОВАТЬ ЗВУК</button>
+    <button id="connect">2. ПОДКЛЮЧИТЬ РАДАР</button>
+    
+    <div id="statusBox">READY</div>
+    
+    <div id="log">--- ОЖИДАНИЕ ЗАПУСКА ---<br></div>
 </div>
 
 <script>
@@ -50,57 +65,68 @@
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
+    // Активация аудио-движка
     unlockBtn.onclick = () => {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        unlockBtn.innerText = "ЗВУК ГОТОВ ✅";
-        log("Аудио активно");
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        unlockBtn.className = "ready";
+        unlockBtn.innerText = "ЗВУК ВКЛЮЧЕН ✅";
+        log("Аудио-движок готов. Проверь громкость!");
+        
+        // Тестовый писк
+        playAlert(0.1); 
     };
 
-    function playAlert() {
+    function playAlert(duration = 0.4) {
         if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'square'; osc.frequency.setValueAtTime(900, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = 'sine'; 
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime); 
+        
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 0.05);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
     }
 
     connectBtn.onclick = async () => {
+        if (!audioCtx) {
+            alert("Сначала нажми кнопку 1 (ЗВУК)!");
+            return;
+        }
+
         try {
             log("Запрос Bluetooth...");
-            
-            // Список ВСЕХ возможных сервисов, которые могут быть у радара
-            const allPossibleServices = [
-                '00001812-0000-1000-8000-00805f9b34fb', // HID
-                '0000180a-0000-1000-8000-00805f9b34fb', // Info
-                '0000180f-0000-1000-8000-00805f9b34fb', // Battery
-                '0000feee-0000-1000-8000-00805f9b34fb', // Magene Custom
-                '0000ff01-0000-1000-8000-00805f9b34fb', // Magene Custom 2
-                '00001101-0000-1000-8000-00805f9b34fb'  // Serial
-            ];
-
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
-                optionalServices: allPossibleServices
+                optionalServices: [
+                    '00001812-0000-1000-8000-00805f9b34fb', // Основной (Radar)
+                    '0000180f-0000-1000-8000-00805f9b34fb'  // Батарея
+                ]
             });
 
-            log("Подключение к " + device.name);
+            log("Коннект к " + device.name);
             const server = await device.gatt.connect();
             
-            log("Поиск сервисов...");
-            // Пробуем получить все сервисы по очереди, пока Chrome не разрешит
+            log("Поиск данных...");
             const services = await server.getPrimaryServices();
-            log("Найдено разрешенных сервисов: " + services.length);
-
-            if (services.length === 0) {
-                log("ОШИБКА: Браузер заблокировал все сервисы. Попробуй включить флаги в chrome://flags");
-            }
-
+            
+            let found = false;
             for (let service of services) {
-                log("Сканирую сервис: " + service.uuid);
                 const chars = await service.getCharacteristics();
-                
                 for (let char of chars) {
                     if (char.properties.notify) {
                         await char.startNotifications();
@@ -110,24 +136,28 @@
                                 statusBox.innerText = "МАШИНА! 🚗";
                                 statusBox.className = "warning";
                                 playAlert();
+                                log("ОБНАРУЖЕНО!");
                             } else {
                                 statusBox.innerText = "ЧИСТО ✅";
                                 statusBox.className = "clear";
                             }
                         });
-                        log("ПОДПИСКА ОК: " + char.uuid.substring(0,6));
+                        log("Слушаю ID: " + char.uuid.substring(0,6));
+                        found = true;
                     }
                 }
             }
-            
-            statusBox.innerText = "АКТИВЕН";
-            statusBox.className = "clear";
+
+            if (found) {
+                statusBox.innerText = "АКТИВЕН";
+                statusBox.className = "clear";
+                log("ВСЁ ОК! Можно ехать.");
+            } else {
+                log("Не нашел нужных данных. Проверь флаги Chrome.");
+            }
 
         } catch (e) {
-            log("ОШИБКА: " + e.name + " - " + e.message);
-            if (e.name === "SecurityError") {
-                log("Совет: Введи в Chrome адрес chrome://flags и включи 'Web Bluetooth API'");
-            }
+            log("ОШИБКА: " + e.message);
         }
     };
 </script>
