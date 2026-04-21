@@ -1,41 +1,35 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar PRO + Haptic</title>
+    <title>Radar Fixed Audio</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 20px; background: #000; color: #fff; }
         .container { max-width: 450px; margin: 0 auto; }
         button { 
-            width: 100%; padding: 20px; font-size: 18px; font-weight: bold;
+            width: 100%; padding: 25px; font-size: 20px; font-weight: bold;
             cursor: pointer; background: #007bff; color: white; border: none; 
             border-radius: 15px; margin-bottom: 15px;
         }
-        #unlockAudio { background: #444; }
         #unlockAudio.active { background: #28a745; }
         #statusBox {
-            margin: 20px 0; padding: 40px 20px; border-radius: 25px;
-            background: #111; font-size: 30px; font-weight: 900; border: 3px solid #333;
+            margin: 20px 0; padding: 50px 20px; border-radius: 25px;
+            background: #111; font-size: 35px; font-weight: 900; border: 3px solid #333;
         }
-        .clear { color: #2ecc71; border-color: #2ecc71 !important; }
-        .warning { color: #fff; background: #e74c3c !important; animation: blink 0.3s infinite; }
+        .warning { background: #e74c3c !important; color: #fff; animation: blink 0.3s infinite; }
         @keyframes blink { 0% {opacity: 1} 50% {opacity: 0.5} 100% {opacity: 1} }
-        #log { 
-            margin-top: 15px; font-family: monospace; font-size: 11px; 
-            color: #0f0; text-align: left; height: 150px; 
-            overflow-y: auto; background: #050505; padding: 10px; border-radius: 10px;
-        }
+        #log { font-family: monospace; font-size: 11px; color: #0f0; text-align: left; height: 120px; overflow-y: auto; background: #050505; padding: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>RADAR HAPTIC</h1>
-    <button id="unlockAudio">1. ВКЛЮЧИТЬ ЗВУК И ВИБРО</button>
+    <h1>RADAR AUDIO FIX</h1>
+    <button id="unlockAudio">1. АКТИВИРОВАТЬ СИСТЕМУ</button>
     <button id="connect">2. ПОДКЛЮЧИТЬ РАДАР</button>
     <div id="statusBox">READY</div>
-    <div id="log">Ожидание...<br></div>
+    <div id="log">--- LOG ---<br></div>
 </div>
 
 <script>
@@ -45,68 +39,73 @@
     const logDiv = document.getElementById('log');
 
     let audioCtx = null;
+    let isConnected = false;
 
     function log(msg) {
         logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    // Сигнал при подключении (восходящий)
-    function playConnectSignal() {
+    // Функция проигрывания звука
+    function playAlert() {
         if (!audioCtx) return;
-        if (navigator.vibrate) navigator.vibrate(500); // Длинная вибрация
+        if (audioCtx.state === 'suspended') audioCtx.resume();
 
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.5);
-        gain.gain.setValueAtTime(0, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.1);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.6);
-    }
-
-    // Сигнал ТРЕВОГИ (резкий)
-    function playAlertSignal() {
-        if (!audioCtx) return;
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200]); // Двойной удар
-
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = 'square'; // Резкий звук
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        
         gain.gain.setValueAtTime(0, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.05);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+        
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+    }
+
+    // Хак: проигрывание тишины раз в 20 секунд, чтобы Chrome не блокировал звук
+    function keepAudioAlive() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.0001; // Почти бесшумно
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
+        setTimeout(keepAudioAlive, 20000);
     }
 
     unlockBtn.onclick = () => {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.resume();
         unlockBtn.className = "active";
-        unlockBtn.innerText = "ГОТОВО ✅";
-        log("Звук и вибро активированы");
-        if (navigator.vibrate) navigator.vibrate(100);
+        unlockBtn.innerText = "ЗВУК ПОДГОТОВЛЕН ✅";
+        log("Аудио-канал открыт");
+        playAlert(); // Тестовый писк
+        keepAudioAlive();
     };
 
     connectBtn.onclick = async () => {
         if (!audioCtx) return alert("Нажми кнопку 1!");
         try {
-            log("Поиск радара...");
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: ['00001812-0000-1000-8000-00805f9b34fb']
             });
 
-            log("Коннект...");
             const server = await device.gatt.connect();
+            log("Подключено к " + device.name);
             
-            // СИГНАЛ УСПЕШНОГО ПОДКЛЮЧЕНИЯ
-            playConnectSignal();
-            log("ПОДКЛЮЧЕНО К " + device.name);
+            // Писк при успешном коннекте
+            playAlert();
 
             const services = await server.getPrimaryServices();
             for (let service of services) {
@@ -115,10 +114,12 @@
                     if (char.properties.notify) {
                         await char.startNotifications();
                         char.addEventListener('characteristicvaluechanged', (e) => {
-                            if (e.target.value.getUint8(0) > 0) {
+                            const val = e.target.value.getUint8(0);
+                            if (val > 0) {
                                 statusBox.innerText = "МАШИНА! 🚗";
                                 statusBox.className = "warning";
-                                playAlertSignal();
+                                playAlert(); // Теперь должен сработать!
+                                log("ВИЖУ ЦЕЛЬ!");
                             } else {
                                 statusBox.innerText = "ЧИСТО ✅";
                                 statusBox.className = "clear";
