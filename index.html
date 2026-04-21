@@ -73,17 +73,17 @@
     };
 
     async function unlockRadar(char) {
-        // Те самые секретные пароли с правильной контрольной суммой (0f в конце)
         const magicKeys = [
             new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
             new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0f])
         ];
 
+        // Отправляем пароли только один раз, чтобы не спамить
         for (let i = 0; i < magicKeys.length; i++) {
             try {
                 await char.writeValue(magicKeys[i]);
                 log(`Отправлен пароль ${i+1}`);
-                await new Promise(r => setTimeout(r, 250)); // Пауза
+                await new Promise(r => setTimeout(r, 250)); 
             } catch(e) { log("Ошибка ключа: " + e.message); }
         }
     }
@@ -106,7 +106,9 @@
             const service = await server.getPrimaryService(SERVICE_UUID);
             const chars = await service.getCharacteristics();
 
-            // ШАГ 1: Включаем прослушку каналов ДО отправки паролей
+            let targetChannel = null;
+
+            // ШАГ 1: Включаем прослушку
             for (let char of chars) {
                 if (char.properties.notify) {
                     await char.startNotifications();
@@ -116,12 +118,19 @@
                         
                         subStatus.innerText = "Эфир: " + hex;
 
-                        // Игнорируем фоновые пульсы. Всё остальное — это МАШИНА!
-                        if (hex !== "01 00 06" && hex !== "01 00" && hex !== "05 01 01 02 09") {
+                        // БЕЛЫЙ СПИСОК (Системные ответы и фоновый шум, которые нужно игнорировать)
+                        const ignoreList = [
+                            "01 00 06", "01 00", "05 01 06", 
+                            "05 01 02 02 01 03 0e 06", 
+                            "05 01 03 01 01 01 03 06",
+                            "05 01 03 01 01 01 03 0f 06"
+                        ];
+
+                        if (!ignoreList.includes(hex)) {
                             display.className = "state-warning";
                             statusText.innerText = "МАШИНА! 🚗";
                             playAlert();
-                            log("ЦЕЛЬ: " + hex);
+                            log("РЕАЛЬНАЯ ЦЕЛЬ: " + hex);
                         } else {
                             display.className = "state-clear";
                             statusText.innerText = "ЧИСТО ✅";
@@ -129,14 +138,17 @@
                     });
                     log("Слушаю канал: " + char.uuid.substring(0,4));
                 }
+                
+                // Запоминаем канал для записи
+                if (char.properties.write || char.properties.writeWithoutResponse) {
+                    targetChannel = char;
+                }
             }
 
-            // ШАГ 2: Отправляем пароли активации
-            for (let char of chars) {
-                if (char.properties.write || char.properties.writeWithoutResponse) {
-                    log("Взламываю канал: " + char.uuid.substring(0,4));
-                    await unlockRadar(char);
-                }
+            // ШАГ 2: Взламываем! (Отправляем только в один правильный канал)
+            if (targetChannel) {
+                log("Взламываю канал...");
+                await unlockRadar(targetChannel);
             }
             
             display.className = "state-clear";
