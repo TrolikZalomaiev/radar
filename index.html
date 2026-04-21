@@ -1,35 +1,26 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Magene Radar Polling</title>
+    <title>Magene Radar Scanner V5</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: sans-serif; text-align: center; padding: 15px; background: #000; color: #fff; }
-        #display { width: 100%; height: 150px; margin: 15px 0; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; border: 4px solid #333; transition: 0.2s; }
-        .state-clear { background: #062d19; border-color: #2ecc71; }
-        .state-warning { background: #4d0000; border-color: #ff4d4d; animation: blink 0.4s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        button { width: 100%; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; background: #007bff; color: #fff; }
-        #log { text-align: left; height: 200px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; margin-top: 10px; }
+        #display { width: 100%; height: 120px; margin-bottom: 10px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: #1a1a1a; border: 2px solid #333; }
+        #log { text-align: left; height: 350px; overflow-y: auto; background: #050505; padding: 10px; font-size: 11px; color: #0f0; border-radius: 10px; font-family: monospace; border: 1px solid #222; }
+        button { width: 100%; padding: 20px; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 12px; border: none; background: #007bff; color: #fff; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <div id="display">
-        <div id="statusText" style="font-size: 24px; font-weight: bold;">ГОТОВ</div>
-        <div id="subStatus" style="font-size: 12px; opacity: 0.7;">Нажми кнопку для запуска</div>
-    </div>
-    
-    <button id="startBtn">ПОДКЛЮЧИТЬ И ОПРАШИВАТЬ</button>
-    
-    <div id="log">Лог системы:<br></div>
+    <div id="display"><div id="statusText" style="font-size: 24px;">ИЩЕМ КАНАЛ...</div></div>
+    <button id="startBtn">ЗАПУСТИТЬ СКАНЕР 📡</button>
+    <div id="log">Лог поиска...<br></div>
 
 <script>
     const logDiv = document.getElementById('log');
-    const display = document.getElementById('display');
     const statusText = document.getElementById('statusText');
-    const subStatus = document.getElementById('subStatus');
     const SERVICE_UUID = '8ce5cc01-0a4d-11e9-ab14-d663bd873d93';
+    let lastData = {}; // Хранилище последних данных по каждому каналу
 
     function log(msg) {
         logDiv.innerHTML += `> ${msg}<br>`;
@@ -38,38 +29,28 @@
 
     document.getElementById('startBtn').onclick = async () => {
         try {
-            log("Запрос устройства...");
             const device = await navigator.bluetooth.requestDevice({
-                acceptAllDevices: true,
-                optionalServices: [SERVICE_UUID]
+                acceptAllDevices: true, optionalServices: [SERVICE_UUID]
             });
-
             const server = await device.gatt.connect();
-            log("Соединено с радаром");
             const service = await server.getPrimaryService(SERVICE_UUID);
             const chars = await service.getCharacteristics();
+            log("Подключено. Сканирую каналы...");
 
-            // Ключи активации
+            // Ключи из твоего дампа (на всякий случай)
             const keys = [
                 new Uint8Array([0x05, 0x01, 0x02, 0x02, 0x01, 0x03, 0x0e]),
                 new Uint8Array([0x05, 0x01, 0x03, 0x01, 0x01, 0x01, 0x03, 0x0f])
             ];
 
-            // 1. Активируем радар ключами
+            // Активация
             for (let char of chars) {
-                if (char.properties.write || char.properties.writeWithoutResponse) {
-                    for (let key of keys) {
-                        await char.writeValue(key);
-                        log("Отправлен код активации...");
-                        await new Promise(r => setTimeout(r, 200));
-                    }
+                if (char.properties.write) {
+                    for (let key of keys) await char.writeValue(key).catch(()=>{});
                 }
             }
 
-            log("Начинаю цикл опроса...");
-            statusText.innerText = "СЛУШАЮ...";
-
-            // 2. ЦИКЛ ОПРОСА (Зацикливаем чтение)
+            // ЦИКЛ ПОИСКА ЖИВОГО КАНАЛА
             while (device.gatt.connected) {
                 for (let char of chars) {
                     if (char.properties.read) {
@@ -78,30 +59,29 @@
                             const hex = Array.from(new Uint8Array(value.buffer))
                                              .map(b => b.toString(16).padStart(2, '0')).join(' ');
                             
-                            subStatus.innerText = "Сырые данные: " + hex;
+                            const charId = char.uuid.substring(0, 4);
 
-                            // Если данные изменились и это не тишина
-                            if (hex !== "01 00 06" && hex !== "" && !hex.startsWith("57 0a")) {
-                                display.className = "state-warning";
-                                statusText.innerText = "ЦЕЛЬ ОБНАРУЖЕНА!";
-                                log("ДАННЫЕ: " + hex);
-                            } else {
-                                display.className = "state-clear";
-                                statusText.innerText = "ЧИСТО";
+                            // Если данные в этом канале изменились по сравнению с прошлым разом
+                            if (hex !== lastData[charId]) {
+                                lastData[charId] = hex;
+                                log(`КАНАЛ ${charId} ИЗМЕНИЛСЯ: ${hex}`);
+                                
+                                // Если это не фонарь (57 0a), то это может быть машина!
+                                if (!hex.startsWith("57 0a") && hex.length > 5) {
+                                    statusText.innerText = "ДВИЖЕНИЕ!";
+                                    document.getElementById('display').style.borderColor = "#ff4d4d";
+                                    setTimeout(() => { 
+                                        statusText.innerText = "СЛУШАЮ..."; 
+                                        document.getElementById('display').style.borderColor = "#333";
+                                    }, 1000);
+                                }
                             }
-                        } catch (e) {
-                            // Игнорируем ошибки одиночных чтений
-                        }
+                        } catch (e) {}
                     }
                 }
-                // Пауза между опросами 300мс (чтобы не перегреть Bluetooth)
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 150)); // Быстрый опрос
             }
-
-        } catch (e) {
-            log("Ошибка: " + e);
-            statusText.innerText = "ОШИБКА";
-        }
+        } catch (e) { log("Ошибка: " + e); }
     };
 </script>
 </body>
